@@ -1,39 +1,79 @@
+const jwt = require('jsonwebtoken');
 const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const jwtSecret = "ThisIsSecretOk";
+
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+
+function auth(req, res, next) {
+  const authToken = req.headers['authorization'];
+
+  if (authToken != undefined) {
+    const bearerToken = authToken.split(' ');
+    const token = bearerToken[1];
+
+    jwt.verify(token, jwtSecret, (error, data) => {
+      if (error) {
+        res.status(401).json({
+          error: "Invalid token"
+        });
+
+        return console.log("error: Invalid token");
+      } else {
+        console.log("success: Token is valid");
+
+        req.loggedUser = {
+          id: data.id,
+          username: data.username,
+        }
+
+        next();
+      }
+    });
+  } else {
+    res.status(401).json({
+      error: "Token not found"
+    });
+
+    return console.log("error: Token not found");
+  }
+}
 
 var DB = {
   users: [{
     id: 23,
-    firstName: "Carlos",
-    lastName: "Lima",
+    username: "eduardo",
+    email: "eduardo@email.com",
+    password: "123456",
   },
   {
-    id: 51,
-    firstName: "Eduardo",
-    lastName: "Lima",
+    id: 27,
+    username: "carlos",
+    email: "carlos@email.com",
+    password: "654321",
   },
   {
-    id: 33,
-    firstName: "Eduardo",
-    lastName: "Rocha",
+    id: 45,
+    username: "rocha",
+    email: "rocha@email.com",
+    password: "123123",
   }],
 }
 
 //return all sers
-app.get("/users", (req, res) => {
+app.get("/users", auth, (req, res) => {
   if (DB.users.length <= 0) {
     res.status(200).json({
       success: "There is no users yet"
     });
 
-
     return console.log("success: There is no users yet");
   }
   res.status(200).json(DB.users);
+  console.log(req.loggedUser);
   console.log(DB.users);
 });
 
@@ -66,7 +106,7 @@ app.get("/users/:id", (req, res) => {
 
 //insert user
 app.post("/user", (req, res) => {
-  const { id, firstName, lastName } = req.body;
+  const { id, username, email } = req.body;
 
   //verify id
   if (id != undefined && isNaN(id)) {
@@ -78,7 +118,7 @@ app.post("/user", (req, res) => {
   }
 
   //verify first name
-  if (firstName == undefined || firstName == "") {
+  if (username == undefined || username == "") {
     res.status(400).json({
       error: "First name cannot be null"
     });
@@ -87,7 +127,7 @@ app.post("/user", (req, res) => {
   }
 
   //verify last name
-  if (lastName == undefined || lastName == "") {
+  if (email == undefined || email == "") {
     res.status(400).json({
       error: "Last name cannot be null"
     });
@@ -97,8 +137,8 @@ app.post("/user", (req, res) => {
 
   DB.users.push({
     id,
-    firstName,
-    lastName,
+    username,
+    email,
   });
 
   let resultUser = DB.users.find(user => user.id === id);
@@ -144,7 +184,7 @@ app.delete("/user/:id", (req, res) => {
 //update user
 app.put("/user/:id", (req, res) => {
   const { id } = req.params
-  const { firstName, lastName } = req.body;
+  const { username, email, password } = req.body;
 
   //verify id
   if (isNaN(id)) {
@@ -156,12 +196,15 @@ app.put("/user/:id", (req, res) => {
 
     //verify if is undefined
     if (resultUser != undefined) {
-      if (firstName != undefined) {
-        resultUser.firstName = firstName;
-        console.log(firstName);
+      if (username != undefined) {
+        resultUser.username = username;
+        console.log(username);
       }
-      if (lastName != undefined) {
-        resultUser.lastName = lastName;
+      if (email != undefined) {
+        resultUser.email = email;
+      }
+      if (password != undefined) {
+        resultUser.password = password;
       }
 
       res.status(200).json({
@@ -175,6 +218,51 @@ app.put("/user/:id", (req, res) => {
 
       return console.log("error: User not found");
     }
+  }
+});
+
+//auth user
+app.post("/auth", (req, res) => {
+  let { username, password } = req.body;
+
+  if (username != undefined && password != undefined) {
+    let resultUser = DB.users.find(user => user.username == username);
+
+    if (resultUser != undefined) {
+      if (resultUser.password == password) {
+        jwt.sign({
+          id: resultUser.id,
+          username: resultUser.username
+        }, jwtSecret, { expiresIn: '48h' }, (error, token) => {
+          if (error) {
+            res.status(500).json({
+              error: "Internal error, contact the support"
+            });
+          } else {
+            res.status(200).json({
+              token: token
+            });
+
+            return console.log("Token generated");
+          }
+        });
+      } else {
+        res.status(404).json({
+          error: "Username/Password not found"
+        });
+        return console.log("error: Username/Password not found");
+      }
+    } else {
+      res.status(404).json({
+        error: "Username/Password not found"
+      });
+      return console.log("error: Username/Password not found");
+    }
+  } else {
+    res.status(400).json({
+      error: "Invalid username/password"
+    });
+    return console.log("error: Invalid username/password");
   }
 });
 
